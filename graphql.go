@@ -39,6 +39,7 @@ import (
 	"mime/multipart"
 	"net/http"
 
+	"github.com/cheggaaa/pb/v3"
 	"github.com/pkg/errors"
 )
 
@@ -184,7 +185,10 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 	gr := &graphResponse{
 		Data: resp,
 	}
-	r, err := http.NewRequest(http.MethodPost, c.endpoint, &requestBody)
+	bar := pb.Full.Start(requestBody.Len())
+	reader := bar.NewProxyReader(&requestBody)
+	defer reader.Close()
+	r, err := http.NewRequest(http.MethodPost, c.endpoint, reader)
 	if err != nil {
 		return err
 	}
