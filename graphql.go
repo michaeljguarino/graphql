@@ -39,8 +39,8 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	"github.com/cheggaaa/pb/v3"
 	"github.com/pkg/errors"
+	"github.com/schollz/progressbar/v3"
 )
 
 // Client is a client for interacting with a GraphQL API.
@@ -185,13 +185,19 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 	gr := &graphResponse{
 		Data: resp,
 	}
-	bar := pb.Full.Start(requestBody.Len())
-	reader := bar.NewProxyReader(&requestBody)
+	bar := progressbar.DefaultBytes(
+    int64(requestBody.Len()),
+    "upload progress",
+	)
+
+	reader := progressbar.NewReader(&requestBody, bar)
 	defer reader.Close()
-	r, err := http.NewRequest(http.MethodPost, c.endpoint, reader)
+
+	r, err := http.NewRequest(http.MethodPost, c.endpoint, &reader)
 	if err != nil {
 		return err
 	}
+
 	r.Close = c.closeReq
 	r.Header.Set("Content-Type", writer.FormDataContentType())
 	r.Header.Set("Accept", "application/json; charset=utf-8")
@@ -200,6 +206,7 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 			r.Header.Add(key, value)
 		}
 	}
+
 	c.logf(">> headers: %v", r.Header)
 	r = r.WithContext(ctx)
 	res, err := c.httpClient.Do(r)
@@ -207,10 +214,12 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 		return err
 	}
 	defer res.Body.Close()
+
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, res.Body); err != nil {
 		return errors.Wrap(err, "reading body")
 	}
+
 	c.logf("<< %s", buf.String())
 	if err := json.NewDecoder(&buf).Decode(&gr); err != nil {
 		if res.StatusCode != http.StatusOK {
@@ -218,10 +227,12 @@ func (c *Client) runWithPostFields(ctx context.Context, req *Request, resp inter
 		}
 		return errors.Wrap(err, "decoding response")
 	}
+
 	if len(gr.Errors) > 0 {
 		// return first error
 		return gr.Errors[0]
 	}
+
 	return nil
 }
 
